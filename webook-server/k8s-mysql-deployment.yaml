@@ -6,6 +6,9 @@ metadata:
     app: webook-mysql
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: webook-mysql
   template:
     metadata:
       name: webook-mysql
@@ -15,13 +18,23 @@ spec:
       containers:
         - name: webook-mysql
           image: mysql:8.0
-          imagePullPolicy: IfNotPresent
           env:
             - name: MYSQL_ROOT_PASSWORD
               value: root
+          imagePullPolicy: IfNotPresent
+#         此处Mount(挂载)需要跟下面的volumes中的一个匹配上
+          volumeMounts:
+#            这个路径是对应mysql数据存储的位置
+            - mountPath: /var/lib/mysql
+              name: mysql-storage
           ports:
             - containerPort: 3306
       restartPolicy: Always
-  selector:
-    matchLabels:
-      app: webook-mysql
+#     整个POD有哪些持久化的目录
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: webook-mysql-claim
+#        - name: hadoop-storage
+#          persistentVolumeClaim:
+#            claimName: webook-hadoop-claim

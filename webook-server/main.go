@@ -11,22 +11,23 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"webook/webook-server/config"
 	"webook/webook-server/internal/repository"
+	"webook/webook-server/internal/repository/cache"
 	"webook/webook-server/internal/repository/dao"
 	"webook/webook-server/internal/service"
 	"webook/webook-server/internal/web"
 	"webook/webook-server/internal/web/middleware"
-	"webook/webook-server/pkg/ginx/middlewares/ratelimit"
 )
 
 func main() {
-	//db := initDB()
-	//server := initWebServer()
-	//
-	//u := initUser(db)
-	//u.RegisterRouters(server)
+	db := initDB()
+	server := initWebServer()
 
-	server := gin.Default()
+	rdb := initRedis()
+	u := initUser(db, rdb)
+	u.RegisterRouters(server)
+
 	server.GET("/hello", func(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "你好，你来了")
 	})
@@ -45,10 +46,10 @@ func initWebServer() *gin.Engine {
 	})
 
 	//redis 实现访问限流
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
-	server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
+	//redisClient := redis.NewClient(&redis.Options{
+	//	Addr: "localhost:6379",
+	//})
+	//server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
 
 	server.Use(cors.New(cors.Config{
 		AllowHeaders:  []string{"Content-Type", "Authorization"},
@@ -82,16 +83,24 @@ func initWebServer() *gin.Engine {
 	return server
 }
 
-func initUser(db *gorm.DB) *web.UserHandler {
+func initRedis() redis.Cmdable {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: config.Config.Redis.Addr,
+	})
+	return redisClient
+}
+
+func initUser(db *gorm.DB, rdb redis.Cmdable) *web.UserHandler {
 	ud := dao.NewUserDAO(db)
-	repo := repository.NewUserRepository(ud)
+	uc := cache.NewUserCache(rdb)
+	repo := repository.NewUserRepository(ud, uc)
 	svc := service.NewUserService(repo)
 	u := web.NewUserHandler(svc)
 	return u
 }
 
 func initDB() *gorm.DB {
-	db, err := gorm.Open(mysql.Open("root:root@tcp(localhost:13316)/webook"))
+	db, err := gorm.Open(mysql.Open(config.Config.DB.DSN))
 	if err != nil {
 		//只会在初始化过程中panic
 		//panic相当于整个 goroutine 结束
